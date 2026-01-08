@@ -3,7 +3,7 @@ Prompt service - handles prompt CRUD operations and versioning.
 Manages prompt lifecycle and provides stable inference endpoints.
 """
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, distinct
 from typing import Optional, List
 from app.models.prompt import Prompt, PromptStatus
 from app.schemas.prompt import PromptCreate
@@ -40,7 +40,7 @@ class PromptService:
             template_text=prompt_data.template_text,
             input_schema=prompt_data.input_schema,
             output_schema=prompt_data.output_schema,
-            metadata=prompt_data.metadata,
+            prompt_metadata=prompt_data.metadata,
             parent_version_id=prompt_data.parent_version_id,
             status=prompt_data.status,
         )
@@ -55,12 +55,12 @@ class PromptService:
     def get_prompt(db: Session, name: str, version: Optional[str] = None) -> Optional[Prompt]:
         """
         Get a prompt by name and optionally version.
-        If version is None, returns the latest active version.
+        If version is None, returns the latest active version, or latest version if no active exists.
         
         Args:
             db: Database session
             name: Prompt name
-            version: Optional version (defaults to latest active)
+            version: Optional version (defaults to latest active, or latest if no active)
             
         Returns:
             Prompt or None if not found
@@ -71,9 +71,17 @@ class PromptService:
             ).first()
         else:
             # Get latest active version
-            return db.query(Prompt).filter(
+            prompt = db.query(Prompt).filter(
                 and_(Prompt.name == name, Prompt.status == PromptStatus.ACTIVE)
             ).order_by(Prompt.created_at.desc()).first()
+            
+            # If no active version, get latest version regardless of status
+            if not prompt:
+                prompt = db.query(Prompt).filter(
+                    Prompt.name == name
+                ).order_by(Prompt.created_at.desc()).first()
+            
+            return prompt
     
     @staticmethod
     def get_prompt_versions(db: Session, name: str) -> List[Prompt]:
@@ -88,6 +96,30 @@ class PromptService:
             List of prompts ordered by creation date
         """
         return db.query(Prompt).filter(Prompt.name == name).order_by(Prompt.created_at.desc()).all()
+    
+    @staticmethod
+    def list_prompts(db: Session) -> List[Prompt]:
+        """
+        Get all prompts, returning the latest version of each unique prompt name.
+        
+        Args:
+            db: Database session
+            
+        Returns:
+            List of prompts (latest version of each name) ordered by creation date
+        """
+        # Get all unique prompt names
+        names = db.query(distinct(Prompt.name)).all()
+        names = [name[0] for name in names]
+        
+        # Get latest version of each prompt
+        prompts = []
+        for name in names:
+            prompt = db.query(Prompt).filter(Prompt.name == name).order_by(Prompt.created_at.desc()).first()
+            if prompt:
+                prompts.append(prompt)
+        
+        return sorted(prompts, key=lambda p: p.created_at, reverse=True)
     
     @staticmethod
     def run_prompt(
@@ -118,7 +150,7 @@ class PromptService:
             raise ValueError(f"Prompt {name} not found")
         
         # Get model and temperature from metadata or overrides
-        metadata = prompt.metadata or {}
+        metadata = prompt.prompt_metadata or {}
         model = model_override or metadata.get("model") or None
         temperature = temperature_override if temperature_override is not None else metadata.get("temperature")
         
@@ -166,4 +198,33 @@ class PromptService:
         db.refresh(prompt)
         
         return prompt
+    
+    @staticmethod
+    def delete_prompt(db: Session, name: str, version: Optional[str] = None) -> bool:
+        """
+        Delete a prompt version or all versions of a prompt.
+        
+        Args:
+            db: Database session
+            name: Prompt name
+            version: Optional version to delete (if None, deletes all versions)
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        if version:
+            prompt = PromptService.get_prompt(db, name, version)
+            if not prompt:
+                return False
+            db.delete(prompt)
+        else:
+            # Delete all versions of the prompt
+            prompts = db.query(Prompt).filter(Prompt.name == name).all()
+            if not prompts:
+                return False
+            for prompt in prompts:
+                db.delete(prompt)
+        
+        db.commit()
+        return True
 

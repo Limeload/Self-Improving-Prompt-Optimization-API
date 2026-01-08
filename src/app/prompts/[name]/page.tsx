@@ -15,7 +15,8 @@ type Tab = "overview" | "versions" | "evaluations" | "improve" | "history";
 export default function PromptDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const promptName = params.name as string;
+  // Decode the prompt name from URL params (Next.js may pass it encoded)
+  const promptName = params.name ? decodeURIComponent(params.name as string) : "";
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [prompt, setPrompt] = useState<PromptResponse | null>(null);
   const [versions, setVersions] = useState<PromptVersionResponse[]>([]);
@@ -32,13 +33,20 @@ export default function PromptDetailPage() {
   const loadPromptData = async () => {
     try {
       setLoading(true);
+      console.log("Loading prompt with name:", promptName);
       const [promptData, versionsData] = await Promise.all([
-        apiClient.prompts.get(promptName),
+        apiClient.prompts.get(promptName).catch((err) => {
+          console.error("Error loading prompt:", err);
+          throw err;
+        }),
         apiClient.prompts.getVersions(promptName).catch(() => []),
       ]);
-      setPrompt(promptData);
+      if (promptData) {
+        setPrompt(promptData);
+      }
       setVersions(versionsData);
     } catch (error: any) {
+      console.error("Failed to load prompt data:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to load prompt",
@@ -107,13 +115,13 @@ export default function PromptDetailPage() {
               <p className="text-zinc-400">Version {prompt.version}</p>
             </div>
             <div className="flex gap-2">
-              <Link href={`/prompts/${promptName}/run`}>
+              <Link href={`/prompts/${encodeURIComponent(promptName)}/run`}>
                 <Button variant="outline">
                   <Play className="mr-2 h-4 w-4" />
                   Run Inference
                 </Button>
               </Link>
-              <Link href={`/prompts/evaluate?prompt=${promptName}`}>
+              <Link href={`/prompts/evaluate?prompt=${encodeURIComponent(promptName)}`}>
                 <Button variant="outline">
                   <BarChart3 className="mr-2 h-4 w-4" />
                   Evaluate
@@ -161,6 +169,14 @@ export default function PromptDetailPage() {
 }
 
 function OverviewTab({ prompt }: { prompt: PromptResponse }) {
+  if (!prompt) {
+    return (
+      <Card className="p-6">
+        <p className="text-zinc-400">No prompt data available</p>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Prompt Template */}
@@ -170,7 +186,7 @@ function OverviewTab({ prompt }: { prompt: PromptResponse }) {
         </CardHeader>
         <CardContent>
           <pre className="text-sm font-mono text-zinc-300 bg-zinc-950 p-4 rounded overflow-x-auto whitespace-pre-wrap">
-            {prompt.template_text}
+            {prompt.template_text || "(No template text)"}
           </pre>
         </CardContent>
       </Card>
@@ -178,34 +194,43 @@ function OverviewTab({ prompt }: { prompt: PromptResponse }) {
       {/* Metadata */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* Schemas */}
-        {(prompt.input_schema || prompt.output_schema) && (
+        {(prompt.input_schema || prompt.output_schema) ? (
           <Card>
             <CardHeader>
               <CardTitle className="text-white">Schemas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {prompt.input_schema && (
+              {prompt.input_schema ? (
                 <div>
                   <h4 className="text-sm font-semibold text-zinc-400 mb-2">Input Schema</h4>
                   <pre className="text-xs font-mono text-zinc-300 bg-zinc-950 p-3 rounded overflow-x-auto">
                     {JSON.stringify(prompt.input_schema, null, 2)}
                   </pre>
                 </div>
-              )}
-              {prompt.output_schema && (
+              ) : null}
+              {prompt.output_schema ? (
                 <div>
                   <h4 className="text-sm font-semibold text-zinc-400 mb-2">Output Schema</h4>
                   <pre className="text-xs font-mono text-zinc-300 bg-zinc-950 p-3 rounded overflow-x-auto">
                     {JSON.stringify(prompt.output_schema, null, 2)}
                   </pre>
                 </div>
-              )}
+              ) : null}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-white">Schemas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-zinc-400 text-sm">No schemas defined</p>
             </CardContent>
           </Card>
         )}
 
         {/* Metadata */}
-        {prompt.metadata && (
+        {prompt.metadata ? (
           <Card>
             <CardHeader>
               <CardTitle className="text-white">Metadata</CardTitle>
@@ -214,6 +239,15 @@ function OverviewTab({ prompt }: { prompt: PromptResponse }) {
               <pre className="text-xs font-mono text-zinc-300 bg-zinc-950 p-3 rounded overflow-x-auto">
                 {JSON.stringify(prompt.metadata, null, 2)}
               </pre>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-white">Metadata</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-zinc-400 text-sm">No metadata defined</p>
             </CardContent>
           </Card>
         )}
@@ -229,13 +263,13 @@ function OverviewTab({ prompt }: { prompt: PromptResponse }) {
             <div>
               <span className="text-zinc-400">Created:</span>{" "}
               <span className="text-white">
-                {new Date(prompt.created_at).toLocaleString()}
+                {prompt.created_at ? new Date(prompt.created_at).toLocaleString() : "N/A"}
               </span>
             </div>
             <div>
               <span className="text-zinc-400">Updated:</span>{" "}
               <span className="text-white">
-                {new Date(prompt.updated_at).toLocaleString()}
+                {prompt.updated_at ? new Date(prompt.updated_at).toLocaleString() : "N/A"}
               </span>
             </div>
           </div>
@@ -279,7 +313,7 @@ function EvaluationsTab({ promptName }: { promptName: string }) {
       <Card className="p-6">
         <div className="text-center py-8">
           <p className="text-zinc-400 mb-4">No evaluations yet</p>
-          <Link href={`/prompts/evaluate?prompt=${promptName}`}>
+          <Link href={`/prompts/evaluate?prompt=${encodeURIComponent(promptName)}`}>
             <Button>Run Evaluation</Button>
           </Link>
         </div>
@@ -355,7 +389,7 @@ function ImproveTab({ promptName }: { promptName: string }) {
     <Card className="p-6">
       <div className="text-center py-8">
         <p className="text-zinc-400 mb-4">Trigger self-improvement for this prompt</p>
-        <Link href={`/prompts/improve?prompt=${promptName}`}>
+        <Link href={`/prompts/improve?prompt=${encodeURIComponent(promptName)}`}>
           <Button>
             <TrendingUp className="mr-2 h-4 w-4" />
             Start Improvement

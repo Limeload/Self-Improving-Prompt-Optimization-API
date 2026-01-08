@@ -4,19 +4,28 @@ import { Button } from "@/components/ui/button";
 import { StatusPill } from "./StatusPill";
 import { MetricBadge } from "./MetricBadge";
 import { PromptResponse } from "@/lib/api-client";
-import { Eye, Play, TrendingUp, FileText } from "lucide-react";
+import { Eye, Play, Trash2 } from "lucide-react";
 
 interface PromptCardProps {
   prompt: PromptResponse;
   lastEvaluationScore?: number;
   lastPromotionDecision?: "promoted" | "rejected" | "pending";
+  onDelete?: (prompt: PromptResponse) => void;
 }
 
 export function PromptCard({
   prompt,
   lastEvaluationScore,
   lastPromotionDecision,
+  onDelete,
 }: PromptCardProps) {
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onDelete && confirm(`Are you sure you want to delete "${prompt.name}" v${prompt.version}?`)) {
+      onDelete(prompt);
+    }
+  };
   return (
     <Card className="p-6 hover:bg-white/[0.05] transition-colors">
       <div className="space-y-4">
@@ -66,17 +75,27 @@ export function PromptCard({
 
         {/* Actions */}
         <div className="flex gap-2 pt-2">
-          <Link href={`/prompts/${prompt.name}`} className="flex-1">
+          <Link href={`/prompts/${encodeURIComponent(prompt.name)}`} className="flex-1">
             <Button variant="outline" size="sm" className="w-full">
               <Eye className="mr-2 h-3 w-3" />
               View Details
             </Button>
           </Link>
-          <Link href={`/prompts/${prompt.name}/run`}>
+          <Link href={`/prompts/${encodeURIComponent(prompt.name)}/run`}>
             <Button variant="outline" size="sm">
               <Play className="h-3 w-3" />
             </Button>
           </Link>
+          {onDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDelete}
+              className="text-red-400 hover:text-red-300 hover:border-red-400"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          )}
         </div>
 
         {/* Metadata */}

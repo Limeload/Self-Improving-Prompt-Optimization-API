@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiClient, EvaluationRequest, EvaluationResponse, DatasetResponse } from "@/lib/api-client";
+import { apiClient, EvaluationRequest, EvaluationResponse, DatasetResponse, PromptResponse } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,19 +16,35 @@ export default function EvaluatePage() {
   const searchParams = useSearchParams();
   const [promptName, setPromptName] = useState("");
   const [datasetId, setDatasetId] = useState("");
+  const [prompts, setPrompts] = useState<PromptResponse[]>([]);
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     const promptParam = searchParams?.get("prompt");
     if (promptParam) {
-      setPromptName(promptParam);
+      // Decode the prompt name from URL search params
+      setPromptName(decodeURIComponent(promptParam));
     }
+    loadPrompts();
     loadDatasets();
   }, [searchParams]);
+
+  const loadPrompts = async () => {
+    try {
+      setLoadingPrompts(true);
+      const promptsList = await apiClient.prompts.list().catch(() => []);
+      setPrompts(promptsList);
+    } catch (error) {
+      // Silently fail
+    } finally {
+      setLoadingPrompts(false);
+    }
+  };
 
   const loadDatasets = async () => {
     try {
@@ -98,44 +114,74 @@ export default function EvaluatePage() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="promptName" className="text-white">
-                Prompt Name
+                Prompt *
               </Label>
-              <Input
-                id="promptName"
-                value={promptName}
-                onChange={(e) => setPromptName(e.target.value)}
-                placeholder="e.g., sentiment_analyzer"
-                className="mt-1 bg-zinc-800 text-white"
-              />
+              {loadingPrompts ? (
+                <div className="mt-1 p-2 bg-zinc-800 text-zinc-400 rounded-md">
+                  Loading prompts...
+                </div>
+              ) : prompts.length > 0 ? (
+                <select
+                  id="promptName"
+                  value={promptName}
+                  onChange={(e) => setPromptName(e.target.value)}
+                  className="mt-1 w-full rounded-md bg-zinc-800 p-2 text-white"
+                  required
+                >
+                  <option value="">Select a prompt...</option>
+                  {prompts.map((prompt) => (
+                    <option key={prompt.id} value={prompt.name}>
+                      {prompt.name} (v{prompt.version}) - {prompt.status}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  id="promptName"
+                  value={promptName}
+                  onChange={(e) => setPromptName(e.target.value)}
+                  placeholder="e.g., sentiment_analyzer"
+                  className="mt-1 bg-zinc-800 text-white"
+                  required
+                />
+              )}
+              <p className="mt-1 text-xs text-zinc-500">
+                Select a prompt to evaluate
+              </p>
             </div>
             <div>
               <Label htmlFor="datasetId" className="text-white">
                 Dataset (optional)
               </Label>
-              {datasets.length > 0 ? (
+              {loadingDatasets ? (
+                <div className="mt-1 p-2 bg-zinc-800 text-zinc-400 rounded-md">
+                  Loading datasets...
+                </div>
+              ) : datasets.length > 0 ? (
                 <select
                   id="datasetId"
                   value={datasetId}
                   onChange={(e) => setDatasetId(e.target.value)}
                   className="mt-1 w-full rounded-md bg-zinc-800 p-2 text-white"
                 >
-                  <option value="">Select a dataset...</option>
+                  <option value="">No dataset (evaluate with default test cases)</option>
                   {datasets.map((dataset) => (
                     <option key={dataset.id} value={dataset.id.toString()}>
                       {dataset.name} ({dataset.entry_count} entries)
+                      {dataset.description && ` - ${dataset.description}`}
                     </option>
                   ))}
                 </select>
               ) : (
-                <Input
-                  id="datasetId"
-                  value={datasetId}
-                  onChange={(e) => setDatasetId(e.target.value)}
-                  placeholder="Enter dataset ID (e.g., 1)"
-                  type="number"
-                  className="mt-1 bg-zinc-800 text-white"
-                />
+                <div className="mt-1 p-3 bg-zinc-900/50 border border-zinc-800 rounded-md">
+                  <p className="text-sm text-zinc-400">
+                    No datasets available. You can evaluate without a dataset, or create one first.
+                  </p>
+                </div>
               )}
+              <p className="mt-1 text-xs text-zinc-500">
+                Optional: Select a dataset to evaluate against. If not selected, default test cases will be used.
+              </p>
             </div>
             <Button
               onClick={handleEvaluate}
@@ -220,13 +266,24 @@ export default function EvaluatePage() {
             </Card>
 
             {/* Detailed Results Table */}
-            {evaluation.results && evaluation.results.length > 0 && (
+            {evaluation.results && evaluation.results.length > 0 ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-white">Per-Example Results</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <EvaluationTable results={evaluation.results} showDetails />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-white">Per-Example Results</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-zinc-400 text-center py-4">
+                    No detailed results available. The evaluation may not have included per-example results.
+                  </p>
                 </CardContent>
               </Card>
             )}

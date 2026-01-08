@@ -83,7 +83,7 @@ class ImprovementService:
         # Make promotion decision
         improvement_delta = best_score - baseline_score
         meets_threshold = improvement_delta >= improvement_threshold
-        meets_format = best_eval.format_pass_rate >= settings.MIN_FORMAT_PASS_RATE if best_eval else False
+        meets_format = (best_eval and best_eval.format_pass_rate and best_eval.format_pass_rate >= settings.MIN_FORMAT_PASS_RATE) if best_eval else False
         no_regression = improvement_delta >= -settings.REGRESSION_GUARDRAIL
         
         if meets_threshold and meets_format and no_regression and best_candidate:
@@ -101,7 +101,8 @@ class ImprovementService:
             if not meets_threshold:
                 reasons.append(f"Improvement ({improvement_delta:.2%}) below threshold ({improvement_threshold:.2%})")
             if not meets_format:
-                reasons.append(f"Format pass rate ({best_eval.format_pass_rate:.2%}) below minimum ({settings.MIN_FORMAT_PASS_RATE:.2%})")
+                format_rate = best_eval.format_pass_rate if best_eval and best_eval.format_pass_rate else 0.0
+                reasons.append(f"Format pass rate ({format_rate:.2%}) below minimum ({settings.MIN_FORMAT_PASS_RATE:.2%})")
             if not no_regression:
                 reasons.append(f"Regression detected ({improvement_delta:.2%})")
             if not best_candidate:
@@ -226,7 +227,7 @@ Respond with a JSON array, where each element has:
                 input_schema=baseline.input_schema,
                 output_schema=baseline.output_schema,
                 metadata={
-                    **(baseline.metadata or {}),
+                    **(baseline.prompt_metadata or {}),
                     "improvement_rationale": candidate_data.get("rationale", ""),
                     "addressed_failures": candidate_data.get("addressed_failures", []),
                     "parent_version": baseline.version,

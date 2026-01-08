@@ -13,7 +13,8 @@ import Link from "next/link";
 export default function RunInferencePage() {
   const params = useParams();
   const router = useRouter();
-  const promptName = params.name as string;
+  // Decode the prompt name from URL params (Next.js may pass it encoded)
+  const promptName = params.name ? decodeURIComponent(params.name as string) : "";
   const [inputData, setInputData] = useState<Record<string, any>>({});
   const [output, setOutput] = useState<PromptRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,7 +54,7 @@ export default function RunInferencePage() {
         {/* Header */}
         <div className="mb-6">
           <Link
-            href={`/prompts/${promptName}`}
+            href={`/prompts/${encodeURIComponent(promptName)}`}
             className="mb-4 inline-flex items-center text-zinc-400 hover:text-white"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />

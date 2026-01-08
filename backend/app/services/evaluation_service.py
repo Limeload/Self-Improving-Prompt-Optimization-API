@@ -53,7 +53,35 @@ class EvaluationService:
                 for entry in dataset_entries
             ]
         else:
-            raise ValueError("Either dataset or dataset_entries must be provided")
+            # Create default test entries if no dataset provided
+            # Use a simple test case based on the prompt's input schema
+            default_input = {}
+            if prompt.input_schema:
+                # Try to extract example values from schema
+                properties = prompt.input_schema.get("properties", {})
+                for key, prop in properties.items():
+                    prop_type = prop.get("type", "string")
+                    if prop_type == "string":
+                        default_input[key] = f"sample_{key}"
+                    elif prop_type == "number":
+                        default_input[key] = 0
+                    elif prop_type == "boolean":
+                        default_input[key] = True
+                    elif prop_type == "array":
+                        default_input[key] = []
+                    elif prop_type == "object":
+                        default_input[key] = {}
+            else:
+                # No schema, use a generic test input
+                default_input = {"text": "This is a test input for evaluation."}
+            
+            entries = [
+                DatasetEntry(
+                    input_data=default_input,
+                    expected_output=None,
+                    rubric="Evaluate the prompt's ability to process the input correctly.",
+                )
+            ]
         
         # Create evaluation record
         evaluation = Evaluation(
@@ -66,7 +94,7 @@ class EvaluationService:
         db.flush()
         
         # Initialize executor and judge
-        metadata = prompt.metadata or {}
+        metadata = prompt.prompt_metadata or {}
         executor = PromptExecutor(
             model_name=metadata.get("model"),
             temperature=metadata.get("temperature"),

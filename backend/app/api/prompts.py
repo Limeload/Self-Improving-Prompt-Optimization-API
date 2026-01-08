@@ -105,6 +105,23 @@ def get_prompt_versions(
     return versions
 
 
+@router.get("", response_model=List[PromptResponse])
+def list_prompts(
+    db: Session = Depends(get_db),
+):
+    """
+    List all prompts.
+    
+    Returns the latest version of each unique prompt name, ordered by creation date (newest first).
+    """
+    try:
+        prompts = PromptService.list_prompts(db)
+        return prompts
+    except Exception as e:
+        logger.error(f"Error listing prompts: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list prompts: {str(e)}")
+
+
 @router.post("", response_model=PromptResponse, status_code=201)
 def create_prompt(
     prompt_data: PromptCreate,
@@ -148,4 +165,26 @@ def get_prompt(
     if not prompt:
         raise HTTPException(status_code=404, detail=f"Prompt {name} not found")
     return prompt
+
+
+@router.delete("/{name}")
+def delete_prompt(
+    name: str,
+    version: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a prompt version or all versions of a prompt.
+    
+    - If **version** is provided, deletes that specific version
+    - If **version** is omitted, deletes all versions of the prompt
+    """
+    try:
+        deleted = PromptService.delete_prompt(db, name, version)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Prompt {name} not found")
+        return {"message": f"Prompt {name}" + (f" version {version}" if version else "") + " deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting prompt: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete prompt: {str(e)}")
 

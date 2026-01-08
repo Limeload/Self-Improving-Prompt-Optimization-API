@@ -234,6 +234,13 @@ export const apiClient = {
 
     getDiff: (versionAId: number, versionBId: number): Promise<PromptDiffResponse> =>
       fetchApi<PromptDiffResponse>(`/diffs/${versionAId}/${versionBId}`),
+
+    delete: (name: string, version?: string): Promise<{ message: string }> => {
+      const params = version ? `?version=${encodeURIComponent(version)}` : "";
+      return fetchApi<{ message: string }>(`/prompts/${encodeURIComponent(name)}${params}`, {
+        method: "DELETE",
+      });
+    },
   },
 
   // Evaluations

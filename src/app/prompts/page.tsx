@@ -55,6 +55,23 @@ export default function PromptsPage() {
     }
   };
 
+  const handleDeletePrompt = async (prompt: PromptResponse) => {
+    try {
+      await apiClient.prompts.delete(prompt.name, prompt.version);
+      toast({
+        title: "Success",
+        description: `Prompt ${prompt.name} v${prompt.version} deleted`,
+      });
+      loadPrompts();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete prompt",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-900 to-black">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -138,6 +155,7 @@ export default function PromptsPage() {
                 <PromptCard
                   key={prompt.id}
                   prompt={prompt}
+                  onDelete={handleDeletePrompt}
                   // TODO: Fetch and pass last evaluation score and promotion decision
                 />
               ))}
@@ -182,37 +200,52 @@ function CreatePromptForm({
 
   return (
     <Card className="mb-8 p-6">
-      <h2 className="mb-4 text-xl font-semibold text-white">Create New Prompt</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-white">Create New Prompt</h2>
+        <Link href="/prompts/create">
+          <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white">
+            Use Full Form →
+          </Button>
+        </Link>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="name" className="text-white">
-              Name
+              Name *
             </Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., sentiment_analyzer"
               required
               className="mt-1 bg-zinc-800 text-white"
             />
+            <p className="mt-1 text-xs text-zinc-500">
+              Unique identifier for the prompt
+            </p>
           </div>
           <div>
             <Label htmlFor="version" className="text-white">
-              Version
+              Version *
             </Label>
             <Input
               id="version"
               value={formData.version}
               onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+              placeholder="e.g., 1.0.0"
               required
               className="mt-1 bg-zinc-800 text-white"
             />
+            <p className="mt-1 text-xs text-zinc-500">
+              Version string (e.g., "1.0.0" or "v2")
+            </p>
           </div>
         </div>
         <div>
           <Label htmlFor="template_text" className="text-white">
-            Template Text
+            Template Text *
           </Label>
           <textarea
             id="template_text"
@@ -221,15 +254,20 @@ function CreatePromptForm({
               setFormData({ ...formData, template_text: e.target.value })
             }
             required
-            rows={6}
-            className="mt-1 w-full rounded-md bg-zinc-800 p-2 text-white"
+            rows={8}
+            placeholder="Enter your prompt template here. Use {{variable_name}} for inputs."
+            className="mt-1 w-full rounded-md bg-zinc-800 p-3 text-white placeholder:text-zinc-500 font-mono text-sm"
           />
+          <p className="mt-1 text-xs text-zinc-500">
+            Use <code className="bg-zinc-900 px-1 rounded">{"{{variable_name}}"}</code> syntax for input variables
+          </p>
         </div>
-        <div className="flex justify-end space-x-2">
+        <div className="flex justify-end space-x-2 pt-2">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button type="submit" className="bg-white text-black hover:bg-zinc-200">
+            <Plus className="mr-2 h-4 w-4" />
             Create
           </Button>
         </div>

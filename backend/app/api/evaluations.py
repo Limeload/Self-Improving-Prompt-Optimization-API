@@ -35,10 +35,22 @@ def evaluate_prompt(
     
     Returns comprehensive evaluation results with per-example scores.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # FastAPI automatically URL-decodes the path parameter
+    # Log the received name for debugging
+    logger.info(f"Evaluating prompt with name: '{name}' (length: {len(name)})")
+    
     # Get prompt
     prompt = PromptService.get_prompt(db, name, request.version)
     if not prompt:
-        raise HTTPException(status_code=404, detail=f"Prompt {name} not found")
+        # Try to find similar prompts for debugging
+        from app.models.prompt import Prompt
+        all_prompts = db.query(Prompt).filter(Prompt.name.like(f"%{name[:20]}%")).limit(5).all()
+        similar_names = [p.name for p in all_prompts]
+        logger.warning(f"Prompt '{name}' not found. Similar names: {similar_names}")
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
     
     # Get dataset if provided
     dataset = None
@@ -63,11 +75,31 @@ def evaluate_prompt(
             EvaluationResultResponse.model_validate(r) for r in evaluation.results
         ]
         
-        response = EvaluationResponse.model_validate(evaluation)
-        response.prompt_name = prompt.name
-        response.prompt_version = prompt.version
-        response.results = result_responses
+        # Create response with all required fields
+        response_data = {
+            "id": evaluation.id,
+            "prompt_id": evaluation.prompt_id,
+            "prompt_name": prompt.name,
+            "prompt_version": prompt.version,
+            "dataset_id": evaluation.dataset_id,
+            "evaluation_type": evaluation.evaluation_type,
+            "overall_score": evaluation.overall_score,
+            "correctness_score": evaluation.correctness_score,
+            "format_score": evaluation.format_score,
+            "verbosity_score": evaluation.verbosity_score,
+            "safety_score": evaluation.safety_score,
+            "consistency_score": evaluation.consistency_score,
+            "total_examples": evaluation.total_examples,
+            "passed_examples": evaluation.passed_examples,
+            "failed_examples": evaluation.failed_examples,
+            "format_pass_rate": evaluation.format_pass_rate,
+            "failure_cases": evaluation.failure_cases,
+            "created_at": evaluation.created_at,
+            "completed_at": evaluation.completed_at,
+            "results": result_responses,
+        }
         
+        response = EvaluationResponse(**response_data)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
@@ -123,6 +155,12 @@ def improve_prompt(
     
     Returns improvement results with promotion decision and reasoning.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # FastAPI automatically URL-decodes the path parameter
+    logger.info(f"Improving prompt with name: '{name}' (length: {len(name)})")
+    
     # Get dataset if provided
     dataset = None
     if request.dataset_id:
