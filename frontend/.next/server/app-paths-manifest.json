@@ -1,6 +1,0 @@
-{
-  "/page": "app/page.js",
-  "/prompts/page": "app/prompts/page.js",
-  "/prompts/[name]/page": "app/prompts/[name]/page.js",
-  "/prompts/[name]/run/page": "app/prompts/[name]/run/page.js"
-}
