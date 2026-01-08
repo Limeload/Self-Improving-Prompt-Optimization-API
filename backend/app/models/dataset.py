@@ -17,8 +17,8 @@ class Dataset(Base):
     name = Column(String(255), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
     
-    # Dataset metadata
-    metadata = Column(JSON, nullable=True)  # {task_type, domain, etc.}
+    # Dataset metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name conflict)
+    dataset_metadata = Column("metadata", JSON, nullable=True)  # {task_type, domain, etc.}
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -51,8 +51,8 @@ class DatasetEntry(Base):
     expected_output = Column(JSON, nullable=True)  # For deterministic validation
     rubric = Column(Text, nullable=True)  # For LLM-based evaluation
     
-    # Metadata
-    metadata = Column(JSON, nullable=True)  # {tags, difficulty, category, etc.}
+    # Metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name conflict)
+    entry_metadata = Column("metadata", JSON, nullable=True)  # {tags, difficulty, category, etc.}
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

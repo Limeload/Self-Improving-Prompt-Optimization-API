@@ -27,10 +27,10 @@ class DatasetResponse(BaseModel):
     id: int
     name: str
     description: Optional[str]
-    metadata: Optional[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = Field(alias="dataset_metadata")
     created_at: datetime
     updated_at: datetime
     entry_count: int = 0
     
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 

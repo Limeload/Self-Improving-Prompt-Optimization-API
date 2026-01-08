@@ -42,8 +42,8 @@ class Prompt(Base):
     input_schema = Column(JSON, nullable=True)  # JSON schema for inputs
     output_schema = Column(JSON, nullable=True)  # JSON schema for outputs
     
-    # Metadata
-    metadata = Column(JSON, nullable=True)  # {task, constraints, model, temperature, owner}
+    # Metadata (renamed from 'metadata' to avoid SQLAlchemy reserved name conflict)
+    prompt_metadata = Column("metadata", JSON, nullable=True)  # {task, constraints, model, temperature, owner}
     
     # Versioning and lineage
     parent_version_id = Column(Integer, ForeignKey("prompts.id"), nullable=True)
