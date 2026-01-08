@@ -2,7 +2,7 @@
 Pydantic schemas for Prompt API endpoints.
 Defines request/response models with validation.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from app.models.prompt import PromptStatus
@@ -10,34 +10,36 @@ from app.models.prompt import PromptStatus
 
 class PromptCreate(BaseModel):
     """Schema for creating a new prompt version"""
-    name: str = Field(..., description="Unique prompt name (e.g., 'email_classifier')")
-    version: str = Field(..., description="Version identifier (e.g., '1.0.0' or 'v2')")
-    template_text: str = Field(..., description="The prompt template text")
-    input_schema: Optional[Dict[str, Any]] = Field(None, description="JSON schema for inputs")
-    output_schema: Optional[Dict[str, Any]] = Field(None, description="JSON schema for outputs")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    
+    name: str = Field(..., min_length=1, description="Unique prompt name (e.g., 'email_classifier')")
+    version: str = Field(..., min_length=1, description="Version identifier (e.g., '1.0.0' or 'v2')")
+    template_text: str = Field(..., min_length=1, description="The prompt template text")
+    input_schema: Optional[Dict[str, Any]] = Field(default=None, description="JSON schema for inputs")
+    output_schema: Optional[Dict[str, Any]] = Field(default=None, description="JSON schema for outputs")
     metadata: Optional[Dict[str, Any]] = Field(
-        None,
+        default=None,
         description="Additional metadata (task, constraints, model, temperature, owner)"
     )
-    parent_version_id: Optional[int] = Field(None, description="ID of parent version for lineage")
-    status: PromptStatus = Field(PromptStatus.DRAFT, description="Initial status")
+    parent_version_id: Optional[int] = Field(default=None, description="ID of parent version for lineage")
+    status: PromptStatus = Field(default=PromptStatus.DRAFT, description="Initial status")
 
 
 class PromptResponse(BaseModel):
     """Schema for prompt response"""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    
     id: int
     name: str
     version: str
     template_text: str
     input_schema: Optional[Dict[str, Any]]
     output_schema: Optional[Dict[str, Any]]
-    metadata: Optional[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]] = Field(alias="prompt_metadata")
     parent_version_id: Optional[int]
     status: PromptStatus
     created_at: datetime
     updated_at: datetime
-    
-    model_config = {"from_attributes": True}
 
 
 class PromptRunRequest(BaseModel):
@@ -59,14 +61,14 @@ class PromptRunResponse(BaseModel):
 
 class PromptVersionResponse(BaseModel):
     """Schema for prompt version listing"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     version: str
     status: PromptStatus
     parent_version_id: Optional[int]
     created_at: datetime
     updated_at: datetime
-    
-    model_config = {"from_attributes": True}
 
 
 class PromptDiffResponse(BaseModel):
