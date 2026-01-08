@@ -4,11 +4,30 @@ Handles dataset CRUD operations.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import List
 from app.core.database import get_db
 from app.schemas.dataset import DatasetCreate, DatasetResponse, DatasetEntryCreate
 from app.models.dataset import Dataset, DatasetEntry
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+
+@router.get("", response_model=List[DatasetResponse])
+def list_datasets(
+    db: Session = Depends(get_db),
+):
+    """
+    List all datasets.
+    
+    Returns all datasets ordered by creation date (newest first).
+    """
+    datasets = db.query(Dataset).order_by(Dataset.created_at.desc()).all()
+    results = []
+    for dataset in datasets:
+        response = DatasetResponse.model_validate(dataset)
+        response.entry_count = len(dataset.entries)
+        results.append(response)
+    return results
 
 
 @router.post("", response_model=DatasetResponse, status_code=201)
@@ -33,7 +52,7 @@ def create_dataset(
     dataset = Dataset(
         name=dataset_data.name,
         description=dataset_data.description,
-        metadata=dataset_data.metadata,
+        dataset_metadata=dataset_data.metadata,
     )
     db.add(dataset)
     db.flush()
@@ -46,7 +65,7 @@ def create_dataset(
                 input_data=entry_data.input_data,
                 expected_output=entry_data.expected_output,
                 rubric=entry_data.rubric,
-                metadata=entry_data.metadata,
+                entry_metadata=entry_data.metadata,
             )
             db.add(entry)
     
