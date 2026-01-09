@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { apiClient, PromptCreate, PromptResponse, PromptRunRequest, PromptRunResponse } from "@/lib/api-client";
+import { useState, useEffect } from "react";
+import { apiClient, PromptCreate, PromptResponse, PromptRunRequest, PromptRunResponse, PromptVersionResponse, EvaluationResponse, ImprovementResponse } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/useToast";
 import { JSONEditor } from "@/components/prompts/JSONEditor";
-import { ArrowLeft, Play, Save, Loader2, CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, Play, Save, Loader2, CheckCircle2, XCircle, Sparkles, History, ChevronDown, ChevronUp, BarChart3, TrendingUp, GitBranch } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Progress } from "@/components/ui/progress";
@@ -48,6 +48,68 @@ export default function CreatePromptPage() {
   // Save state
   const [saving, setSaving] = useState(false);
   const [createdPrompt, setCreatedPrompt] = useState<PromptResponse | null>(null);
+
+  // History state
+  const [versions, setVersions] = useState<PromptVersionResponse[]>([]);
+  const [evaluations, setEvaluations] = useState<EvaluationResponse[]>([]);
+  const [improvements, setImprovements] = useState<ImprovementResponse[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Load history when prompt name changes
+  useEffect(() => {
+    if (formData.name && formData.name.trim().length > 0) {
+      loadHistory(formData.name);
+    } else {
+      setVersions([]);
+      setEvaluations([]);
+      setImprovements([]);
+      setShowHistory(false);
+    }
+  }, [formData.name]);
+
+  const loadHistory = async (promptName: string) => {
+    try {
+      setLoadingHistory(true);
+      const [versionsData, evaluationsData] = await Promise.all([
+        apiClient.prompts.getVersions(promptName).catch(() => []),
+        apiClient.evaluations.listForPrompt(promptName).catch(() => []),
+      ]);
+      setVersions(versionsData);
+      setEvaluations(evaluationsData);
+      // Improvements are tracked through evaluations with type "improvement"
+      // For now, we'll show all evaluations and let users filter
+      setImprovements([]);
+      if (versionsData.length > 0 || evaluationsData.length > 0) {
+        setShowHistory(true);
+      }
+    } catch (error) {
+      console.error("Failed to load history:", error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const getTimeAgo = (date: string): string => {
+    const now = new Date();
+    const past = new Date(date);
+    const diffInMs = now.getTime() - past.getTime();
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+    
+    if (diffInDays === 0) return "today";
+    if (diffInDays === 1) return "1 day ago";
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+    if (diffInDays < 30) {
+      const weeks = Math.floor(diffInDays / 7);
+      return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+    }
+    if (diffInDays < 365) {
+      const months = Math.floor(diffInDays / 30);
+      return `${months} ${months === 1 ? "month" : "months"} ago`;
+    }
+    const years = Math.floor(diffInDays / 365);
+    return `${years} ${years === 1 ? "year" : "years"} ago`;
+  };
 
   const handleTest = async () => {
     if (!formData.template_text.trim()) {
@@ -204,6 +266,184 @@ export default function CreatePromptPage() {
           <h1 className="text-3xl font-bold text-white mb-2">Create New Prompt</h1>
           <p className="text-zinc-400">Build and test your prompt with live evaluation</p>
         </div>
+
+        {/* History Section */}
+        {showHistory && (versions.length > 0 || evaluations.length > 0) && (
+          <Card className="mb-6 bg-zinc-900 border-zinc-800">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <History className="h-5 w-5 text-blue-400" />
+                  Prompt History: {formData.name}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="text-zinc-400"
+                >
+                  {showHistory ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </div>
+            </CardHeader>
+            {showHistory && (
+              <CardContent className="space-y-6">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
+                    <span className="ml-2 text-zinc-400">Loading history...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Versions */}
+                    {versions.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
+                          <GitBranch className="h-4 w-4" />
+                          Versions ({versions.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {versions.slice(0, 5).map((version) => (
+                            <div
+                              key={version.id}
+                              className="p-3 bg-zinc-800/50 rounded border border-zinc-700 hover:bg-zinc-800 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <span className="text-white font-medium">v{version.version}</span>
+                                  <span className="text-zinc-400 text-sm ml-2">
+                                    {getTimeAgo(version.created_at)}
+                                  </span>
+                                </div>
+                                <Link href={`/prompts/${encodeURIComponent(formData.name)}`}>
+                                  <Button variant="ghost" size="sm" className="text-xs">
+                                    View
+                                  </Button>
+                                </Link>
+                              </div>
+                              {version.status && (
+                                <span className={`text-xs px-2 py-0.5 rounded mt-2 inline-block ${
+                                  version.status === "active" ? "bg-green-950/50 text-green-300" :
+                                  version.status === "draft" ? "bg-yellow-950/50 text-yellow-300" :
+                                  "bg-zinc-700 text-zinc-300"
+                                }`}>
+                                  {version.status}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                          {versions.length > 5 && (
+                            <p className="text-xs text-zinc-500 text-center">
+                              ... and {versions.length - 5} more versions
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Evaluations */}
+                    {evaluations.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4" />
+                          Evaluations ({evaluations.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {evaluations.slice(0, 5).map((eval) => (
+                            <div
+                              key={eval.id}
+                              className="p-3 bg-zinc-800/50 rounded border border-zinc-700 hover:bg-zinc-800 transition-colors"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div>
+                                  <span className="text-white font-medium">
+                                    v{eval.prompt_version}
+                                  </span>
+                                  <span className="text-zinc-400 text-sm ml-2">
+                                    {getTimeAgo(eval.created_at)}
+                                  </span>
+                                </div>
+                                {eval.overall_score !== undefined && (
+                                  <span className={`text-sm font-semibold ${
+                                    eval.overall_score >= 0.8 ? "text-green-400" :
+                                    eval.overall_score >= 0.6 ? "text-yellow-400" :
+                                    "text-red-400"
+                                  }`}>
+                                    {(eval.overall_score * 100).toFixed(0)}%
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-4 text-xs text-zinc-500">
+                                {eval.total_examples && (
+                                  <span>{eval.total_examples} examples</span>
+                                )}
+                                {eval.passed_examples !== undefined && (
+                                  <span>{eval.passed_examples} passed</span>
+                                )}
+                                {eval.failed_examples !== undefined && eval.failed_examples > 0 && (
+                                  <span className="text-red-400">{eval.failed_examples} failed</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {evaluations.length > 5 && (
+                            <p className="text-xs text-zinc-500 text-center">
+                              ... and {evaluations.length - 5} more evaluations
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Improvements */}
+                    {improvements.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4" />
+                          Improvements ({improvements.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {improvements.slice(0, 5).map((improvement, idx) => (
+                            <div
+                              key={idx}
+                              className="p-3 bg-zinc-800/50 rounded border border-zinc-700 hover:bg-zinc-800 transition-colors"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div>
+                                  <span className="text-white font-medium">
+                                    {improvement.promotion_decision === "promoted" ? "✓ Promoted" : "Rejected"}
+                                  </span>
+                                  <span className="text-zinc-400 text-sm ml-2">
+                                    {getTimeAgo(improvement.created_at)}
+                                  </span>
+                                </div>
+                                {improvement.improvement_delta !== undefined && (
+                                  <span className={`text-sm font-semibold ${
+                                    improvement.improvement_delta > 0 ? "text-green-400" : "text-red-400"
+                                  }`}>
+                                    {improvement.improvement_delta > 0 ? "+" : ""}
+                                    {(improvement.improvement_delta * 100).toFixed(1)}%
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-zinc-400 line-clamp-2">
+                                {improvement.promotion_reason}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {versions.length === 0 && evaluations.length === 0 && improvements.length === 0 && (
+                      <p className="text-zinc-400 text-center py-4">No history found for this prompt</p>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column: Form */}

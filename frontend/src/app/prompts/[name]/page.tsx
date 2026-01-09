@@ -6,10 +6,11 @@ import { apiClient, PromptResponse, PromptVersionResponse, EvaluationResponse } 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/useToast";
-import { StatusPill, VersionTimeline, MetricBadge, EvaluationTable } from "@/components/prompts";
-import { ArrowLeft, Play, TrendingUp, FileText, History, BarChart3, Trash2 } from "lucide-react";
+import { StatusPill, VersionTimeline, MetricBadge, EvaluationTable, EvaluationReport } from "@/components/prompts";
+import { ArrowLeft, Play, TrendingUp, FileText, History, BarChart3, Trash2, GitBranch, CheckCircle2, XCircle, Clock, Sparkles, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ImprovementResponse } from "@/lib/api-client";
 
 type Tab = "overview" | "versions" | "evaluations" | "improve" | "history";
 
@@ -201,7 +202,7 @@ export default function PromptDetailPage() {
             <EvaluationsTab promptName={promptName} />
           )}
           {activeTab === "improve" && <ImproveTab promptName={promptName} />}
-          {activeTab === "history" && <HistoryTab />}
+          {activeTab === "history" && <HistoryTab promptName={promptName} versions={versions} />}
         </div>
       </div>
     </div>
@@ -457,16 +458,380 @@ function ImproveTab({ promptName }: { promptName: string }) {
   );
 }
 
-function HistoryTab() {
+function HistoryTab({ promptName, versions }: { promptName: string; versions: PromptVersionResponse[] }) {
+  const [evaluations, setEvaluations] = useState<EvaluationResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const evaluationsList = await apiClient.evaluations.listForPrompt(promptName);
+        setEvaluations(evaluationsList);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Failed to load history";
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (promptName) {
+      loadData();
+    }
+  }, [promptName, toast]);
+
+  const getTimeAgo = (date: string): string => {
+    const now = new Date();
+    const past = new Date(date);
+    const diffInMs = now.getTime() - past.getTime();
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+    
+    if (diffInDays === 0) return "today";
+    if (diffInDays === 1) return "1 day ago";
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+    if (diffInDays < 30) {
+      const weeks = Math.floor(diffInDays / 7);
+      return `${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+    }
+    if (diffInDays < 365) {
+      const months = Math.floor(diffInDays / 30);
+      return `${months} ${months === 1 ? "month" : "months"} ago`;
+    }
+    const years = Math.floor(diffInDays / 365);
+    return `${years} ${years === 1 ? "year" : "years"} ago`;
+  };
+
+  // Combine all events into a timeline
+  interface TimelineEvent {
+    type: "version" | "evaluation" | "improvement";
+    date: string;
+    data: PromptVersionResponse | EvaluationResponse | any;
+  }
+
+  // Separate improvements from regular evaluations
+  const improvementEvaluations = evaluations.filter(e => e.evaluation_type === "improvement");
+  const regularEvaluations = evaluations.filter(e => e.evaluation_type !== "improvement");
+
+  const timelineEvents: TimelineEvent[] = [
+    ...versions.map(v => ({ type: "version" as const, date: v.created_at, data: v })),
+    ...regularEvaluations.map(e => ({ type: "evaluation" as const, date: e.created_at, data: e })),
+    ...improvementEvaluations.map(e => ({ type: "improvement" as const, date: e.created_at, data: e })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  if (loading) {
+    return (
+      <Card className="p-6">
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+          <span className="ml-2 text-zinc-400">Loading history...</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (timelineEvents.length === 0) {
+    return (
+      <Card className="p-6">
+        <div className="text-center py-8">
+          <History className="h-12 w-12 text-zinc-600 mx-auto mb-4" />
+          <p className="text-zinc-400 mb-2">No history available</p>
+          <p className="text-sm text-zinc-500">
+            History will appear here as you create versions, run evaluations, and trigger improvements
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <Card className="p-6">
-      <div className="text-center py-8">
-        <p className="text-zinc-400 mb-4">History and audit log coming soon</p>
-        <p className="text-sm text-zinc-500">
-          This will show all actions, promotions, and changes for this prompt
-        </p>
+    <div className="space-y-6">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-950/50 rounded-lg">
+                <GitBranch className="h-5 w-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-sm text-zinc-400">Versions</p>
+                <p className="text-2xl font-bold text-white">{versions.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-950/50 rounded-lg">
+                <BarChart3 className="h-5 w-5 text-purple-400" />
+              </div>
+              <div>
+                <p className="text-sm text-zinc-400">Evaluations</p>
+                <p className="text-2xl font-bold text-white">{evaluations.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-950/50 rounded-lg">
+                <TrendingUp className="h-5 w-5 text-green-400" />
+              </div>
+              <div>
+                <p className="text-sm text-zinc-400">Improvements</p>
+                <p className="text-2xl font-bold text-white">
+                  {improvementEvaluations.length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </Card>
+
+      {/* Timeline */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Activity Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {timelineEvents.map((event, idx) => (
+              <div key={idx} className="relative pl-8 border-l-2 border-zinc-700 pb-6 last:pb-0 last:border-l-0">
+                <div className="absolute -left-2.5 top-0">
+                  {event.type === "version" && (
+                    <div className="w-5 h-5 rounded-full bg-blue-500 border-2 border-zinc-900"></div>
+                  )}
+                  {event.type === "evaluation" && (
+                    <div className="w-5 h-5 rounded-full bg-purple-500 border-2 border-zinc-900"></div>
+                  )}
+                  {event.type === "improvement" && (
+                    <div className="w-5 h-5 rounded-full bg-green-500 border-2 border-zinc-900"></div>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  {/* Version Event */}
+                  {event.type === "version" && (
+                    <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <GitBranch className="h-4 w-4 text-blue-400" />
+                          <span className="font-semibold text-white">Version Created</span>
+                        </div>
+                        <span className="text-xs text-zinc-500">{getTimeAgo(event.date)}</span>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-zinc-300">
+                          <span className="font-medium">v{(event.data as PromptVersionResponse).version}</span>
+                          {" "}
+                          <span className="text-zinc-500">
+                            • {(event.data as PromptVersionResponse).status}
+                          </span>
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          {new Date(event.date).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Evaluation Event */}
+                  {event.type === "evaluation" && (
+                    <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-700">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4 text-purple-400" />
+                          <span className="font-semibold text-white">Evaluation Run</span>
+                        </div>
+                        <span className="text-xs text-zinc-500">{getTimeAgo(event.date)}</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-300">
+                            v{(event.data as EvaluationResponse).prompt_version}
+                          </span>
+                          {(event.data as EvaluationResponse).overall_score !== undefined && (
+                            <span className={`text-lg font-bold ${
+                              (event.data as EvaluationResponse).overall_score! >= 0.8 ? "text-green-400" :
+                              (event.data as EvaluationResponse).overall_score! >= 0.6 ? "text-yellow-400" :
+                              "text-red-400"
+                            }`}>
+                              {((event.data as EvaluationResponse).overall_score! * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-5 gap-2 text-xs">
+                          {(event.data as EvaluationResponse).correctness_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Correctness:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).correctness_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).format_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Format:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).format_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).verbosity_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Verbosity:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).verbosity_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).safety_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Safety:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).safety_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).consistency_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Consistency:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).consistency_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {(event.data as EvaluationResponse).total_examples && (
+                          <div className="flex items-center gap-4 text-xs text-zinc-500">
+                            <span>{(event.data as EvaluationResponse).total_examples} examples</span>
+                            {(event.data as EvaluationResponse).passed_examples !== undefined && (
+                              <span className="text-green-400">
+                                {(event.data as EvaluationResponse).passed_examples} passed
+                              </span>
+                            )}
+                            {(event.data as EvaluationResponse).failed_examples !== undefined && 
+                             (event.data as EvaluationResponse).failed_examples! > 0 && (
+                              <span className="text-red-400">
+                                {(event.data as EvaluationResponse).failed_examples} failed
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-xs text-zinc-500">
+                          {new Date(event.date).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Improvement Event */}
+                  {event.type === "improvement" && (
+                    <div className="bg-zinc-800/50 p-4 rounded-lg border border-green-500/30">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-green-400" />
+                          <span className="font-semibold text-white">Improvement Run</span>
+                        </div>
+                        <span className="text-xs text-zinc-500">{getTimeAgo(event.date)}</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-zinc-300">
+                            v{(event.data as EvaluationResponse).prompt_version}
+                          </span>
+                          {(event.data as EvaluationResponse).overall_score !== undefined && (
+                            <span className={`text-lg font-bold ${
+                              (event.data as EvaluationResponse).overall_score! >= 0.8 ? "text-green-400" :
+                              (event.data as EvaluationResponse).overall_score! >= 0.6 ? "text-yellow-400" :
+                              "text-red-400"
+                            }`}>
+                              {((event.data as EvaluationResponse).overall_score! * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-5 gap-2 text-xs">
+                          {(event.data as EvaluationResponse).correctness_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Correctness:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).correctness_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).format_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Format:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).format_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).verbosity_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Verbosity:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).verbosity_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).safety_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Safety:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).safety_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                          {(event.data as EvaluationResponse).consistency_score !== undefined && (
+                            <div>
+                              <span className="text-zinc-500">Consistency:</span>{" "}
+                              <span className="text-white">
+                                {((event.data as EvaluationResponse).consistency_score! * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {(event.data as EvaluationResponse).total_examples && (
+                          <div className="flex items-center gap-4 text-xs text-zinc-500">
+                            <span>{(event.data as EvaluationResponse).total_examples} examples</span>
+                            {(event.data as EvaluationResponse).passed_examples !== undefined && (
+                              <span className="text-green-400">
+                                {(event.data as EvaluationResponse).passed_examples} passed
+                              </span>
+                            )}
+                            {(event.data as EvaluationResponse).failed_examples !== undefined && 
+                             (event.data as EvaluationResponse).failed_examples! > 0 && (
+                              <span className="text-red-400">
+                                {(event.data as EvaluationResponse).failed_examples} failed
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-xs text-zinc-500">
+                          {new Date(event.date).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

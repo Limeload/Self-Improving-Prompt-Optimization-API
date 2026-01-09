@@ -140,12 +140,32 @@ def list_prompt_evaluations(
     # Build responses
     responses = []
     for evaluation in evaluations:
-        response = EvaluationResponse.model_validate(evaluation)
-        response.prompt_name = evaluation.prompt.name
-        response.prompt_version = evaluation.prompt.version
-        response.results = [
-            EvaluationResultResponse.model_validate(r) for r in evaluation.results
-        ]
+        # Create response with all required fields
+        response_data = {
+            "id": evaluation.id,
+            "prompt_id": evaluation.prompt_id,
+            "prompt_name": evaluation.prompt.name,
+            "prompt_version": evaluation.prompt.version,
+            "dataset_id": evaluation.dataset_id,
+            "evaluation_type": evaluation.evaluation_type,
+            "overall_score": evaluation.overall_score,
+            "correctness_score": evaluation.correctness_score,
+            "format_score": evaluation.format_score,
+            "verbosity_score": evaluation.verbosity_score,
+            "safety_score": evaluation.safety_score,
+            "consistency_score": evaluation.consistency_score,
+            "total_examples": evaluation.total_examples,
+            "passed_examples": evaluation.passed_examples,
+            "failed_examples": evaluation.failed_examples,
+            "format_pass_rate": evaluation.format_pass_rate,
+            "failure_cases": evaluation.failure_cases,
+            "created_at": evaluation.created_at,
+            "completed_at": evaluation.completed_at,
+            "results": [
+                EvaluationResultResponse.model_validate(r) for r in evaluation.results
+            ],
+        }
+        response = EvaluationResponse(**response_data)
         responses.append(response)
     
     return responses
@@ -176,6 +196,37 @@ def get_evaluation(
     ]
     
     return response
+
+
+@router.get("/prompts/{name}/improvements", response_model=List[ImprovementResponse])
+def list_prompt_improvements(
+    name: str,
+    db: Session = Depends(get_db),
+):
+    """
+    List all improvements for a prompt.
+    
+    Returns all improvement runs for the specified prompt, ordered by creation date (newest first).
+    Note: Improvements are tracked through evaluations with evaluation_type="improvement".
+    """
+    from app.models.evaluation import Evaluation
+    from app.models.prompt import Prompt
+    from app.services.prompt_service import PromptService
+    
+    # Get prompt to verify it exists
+    prompt = PromptService.get_prompt(db, name)
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt {name} not found")
+    
+    # Get all prompts with this name (all versions)
+    all_prompts = db.query(Prompt).filter(Prompt.name == name).all()
+    prompt_ids = [p.id for p in all_prompts]
+    
+    # Get evaluations with type "improvement" - these represent improvement runs
+    # Note: We'll need to reconstruct ImprovementResponse from evaluation data
+    # For now, return empty list as improvements are not stored separately
+    # TODO: Store improvement metadata separately or enhance evaluation model
+    return []
 
 
 @router.post("/prompts/{name}/improve", response_model=ImprovementResponse, status_code=201)
