@@ -186,6 +186,15 @@ export interface DatasetCreate {
   }>;
 }
 
+export interface DatasetEntryResponse {
+  id: number;
+  input_data: Record<string, unknown>;
+  expected_output?: Record<string, unknown>;
+  rubric?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface DatasetResponse {
   id: number;
   name: string;
@@ -194,6 +203,7 @@ export interface DatasetResponse {
   created_at: string;
   updated_at: string;
   entry_count: number;
+  entries?: DatasetEntryResponse[];
 }
 
 export interface PromptDiffResponse {
@@ -207,6 +217,10 @@ export interface PromptDiffResponse {
 
 // API Client Functions
 export const apiClient = {
+  // Health check
+  health: (): Promise<{ status: string }> =>
+    fetchApi<{ status: string }>("/health"),
+
   // Prompts
   prompts: {
     list: (): Promise<PromptResponse[]> =>
@@ -233,7 +247,7 @@ export const apiClient = {
       fetchApi<PromptVersionResponse[]>(`/prompts/${encodeURIComponent(name)}/versions`),
 
     getDiff: (versionAId: number, versionBId: number): Promise<PromptDiffResponse> =>
-      fetchApi<PromptDiffResponse>(`/diffs/${versionAId}/${versionBId}`),
+      fetchApi<PromptDiffResponse>(`/prompts/diffs/${versionAId}/${versionBId}`),
 
     delete: (name: string, version?: string): Promise<{ message: string }> => {
       const params = version ? `?version=${encodeURIComponent(version)}` : "";
@@ -250,6 +264,9 @@ export const apiClient = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+
+    listForPrompt: (name: string): Promise<EvaluationResponse[]> =>
+      fetchApi<EvaluationResponse[]>(`/evaluations/prompts/${encodeURIComponent(name)}`),
 
     get: (id: number): Promise<EvaluationResponse> =>
       fetchApi<EvaluationResponse>(`/evaluations/${id}`),
@@ -274,6 +291,28 @@ export const apiClient = {
 
     get: (id: number): Promise<DatasetResponse> =>
       fetchApi<DatasetResponse>(`/datasets/${id}`),
+
+    listTemplates: (): Promise<Array<{
+      id: string;
+      name: string;
+      description: string;
+      metadata: Record<string, unknown>;
+      entry_count: number;
+    }>> =>
+      fetchApi<Array<{
+        id: string;
+        name: string;
+        description: string;
+        metadata: Record<string, unknown>;
+        entry_count: number;
+      }>>("/datasets/templates"),
+
+    createFromTemplate: (templateId: string, customName?: string): Promise<DatasetResponse> => {
+      const params = customName ? `?custom_name=${encodeURIComponent(customName)}` : "";
+      return fetchApi<DatasetResponse>(`/datasets/templates/${encodeURIComponent(templateId)}${params}`, {
+        method: "POST",
+      });
+    },
   },
 };
 

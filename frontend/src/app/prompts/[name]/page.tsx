@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/useToast";
 import { StatusPill, VersionTimeline, MetricBadge, EvaluationTable } from "@/components/prompts";
-import { ArrowLeft, Play, TrendingUp, FileText, History, BarChart3 } from "lucide-react";
+import { ArrowLeft, Play, TrendingUp, FileText, History, BarChart3, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type Tab = "overview" | "versions" | "evaluations" | "improve" | "history";
 
@@ -20,7 +21,9 @@ export default function PromptDetailPage() {
   const [prompt, setPrompt] = useState<PromptResponse | null>(null);
   const [versions, setVersions] = useState<PromptVersionResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
 
   const loadPromptData = async () => {
     try {
@@ -56,6 +59,33 @@ export default function PromptDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptName]);
+
+  const handleDelete = async () => {
+    if (!prompt) return;
+    
+    if (!confirm(`Are you sure you want to delete "${prompt.name}" v${prompt.version}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await apiClient.prompts.delete(prompt.name, prompt.version);
+      toast({
+        title: "Success",
+        description: `Prompt ${prompt.name} v${prompt.version} deleted`,
+      });
+      router.push("/prompts");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete prompt";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -128,6 +158,15 @@ export default function PromptDetailPage() {
                   Evaluate
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="text-red-400 hover:text-red-300 hover:border-red-400"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {deleting ? "Deleting..." : "Delete"}
+              </Button>
             </div>
           </div>
         </div>
@@ -295,14 +334,32 @@ function VersionsTab({
 }
 
 function EvaluationsTab({ promptName }: { promptName: string }) {
-  const [evaluations] = useState<EvaluationResponse[]>([]);
+  const [evaluations, setEvaluations] = useState<EvaluationResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // TODO: Implement endpoint to get evaluations for a prompt
-    // For now, this is a placeholder
-    setLoading(false);
-  }, [promptName]);
+    const loadEvaluations = async () => {
+      try {
+        setLoading(true);
+        const evaluationsList = await apiClient.evaluations.listForPrompt(promptName);
+        setEvaluations(evaluationsList);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Failed to load evaluations";
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (promptName) {
+      loadEvaluations();
+    }
+  }, [promptName, toast]);
 
   if (loading) {
     return <Card className="p-6">Loading evaluations...</Card>;

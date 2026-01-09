@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/useToast";
 import { PromotionDecisionBanner, DiffViewer } from "@/components/prompts";
-import { TrendingUp, ArrowLeft, Loader2 } from "lucide-react";
+import { TrendingUp, ArrowLeft, Loader2, Sparkles, Plus } from "lucide-react";
 import Link from "next/link";
 
 function ImprovePageContent() {
@@ -18,11 +18,21 @@ function ImprovePageContent() {
   const [datasetId, setDatasetId] = useState("");
   const [prompts, setPrompts] = useState<PromptResponse[]>([]);
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
+  const [templates, setTemplates] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    metadata: Record<string, unknown>;
+    entry_count: number;
+  }>>([]);
   const [improvement, setImprovement] = useState<ImprovementResponse | null>(null);
   const [diff, setDiff] = useState<PromptDiffResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [loadingDatasets, setLoadingDatasets] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -33,6 +43,7 @@ function ImprovePageContent() {
     }
     loadPrompts();
     loadDatasets();
+    loadTemplates();
   }, [searchParams]);
 
   useEffect(() => {
@@ -56,10 +67,48 @@ function ImprovePageContent() {
 
   const loadDatasets = async () => {
     try {
+      setLoadingDatasets(true);
       const datasetsList = await apiClient.datasets.list().catch(() => []);
       setDatasets(datasetsList);
     } catch {
       // Silently fail
+    } finally {
+      setLoadingDatasets(false);
+    }
+  };
+
+  const loadTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const templatesList = await apiClient.datasets.listTemplates().catch(() => []);
+      setTemplates(templatesList);
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleCreateFromTemplate = async (templateId: string, templateName: string) => {
+    try {
+      setLoadingDatasets(true);
+      const dataset = await apiClient.datasets.createFromTemplate(templateId);
+      toast({
+        title: "Success",
+        description: `Dataset "${dataset.name}" created from template`,
+      });
+      setShowTemplates(false);
+      await loadDatasets();
+      setDatasetId(dataset.id.toString());
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to create dataset from template";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingDatasets(false);
     }
   };
 
@@ -168,10 +217,71 @@ function ImprovePageContent() {
               </p>
             </div>
             <div>
-              <Label htmlFor="datasetId" className="text-white">
-                Dataset (optional)
-              </Label>
-              {datasets.length > 0 ? (
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="datasetId" className="text-white">
+                  Dataset (optional)
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTemplates(!showTemplates)}
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  {showTemplates ? "Hide Templates" : "Use Template"}
+                </Button>
+              </div>
+              
+              {showTemplates && (
+                <Card className="mb-4 p-4 bg-purple-950/20 border-purple-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-white">Quick Create from Template</h4>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowTemplates(false)}
+                      className="text-zinc-400"
+                    >
+                      ×
+                    </Button>
+                  </div>
+                  {loadingTemplates ? (
+                    <p className="text-sm text-zinc-400">Loading templates...</p>
+                  ) : templates.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {templates.map((template) => (
+                        <Button
+                          key={template.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCreateFromTemplate(template.id, template.name)}
+                          disabled={loadingDatasets}
+                          className="justify-start text-left h-auto py-2 px-3 border-purple-500/30 hover:bg-purple-950/30"
+                        >
+                          <div className="flex-1">
+                            <div className="text-xs font-medium text-white">{template.name}</div>
+                            <div className="text-xs text-zinc-400 mt-0.5">
+                              {template.entry_count} entries
+                            </div>
+                          </div>
+                          <Plus className="h-3 w-3 ml-2 text-purple-400" />
+                        </Button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-400">No templates available</p>
+                  )}
+                </Card>
+              )}
+
+              {loadingDatasets ? (
+                <div className="mt-1 p-2 bg-zinc-800 text-zinc-400 rounded-md">
+                  Loading datasets...
+                </div>
+              ) : datasets.length > 0 ? (
                 <select
                   id="datasetId"
                   value={datasetId}
@@ -188,9 +298,15 @@ function ImprovePageContent() {
                 </select>
               ) : (
                 <div className="mt-1 p-3 bg-zinc-900/50 border border-zinc-800 rounded-md">
-                  <p className="text-sm text-zinc-400">
-                    No datasets available. You can improve without a dataset, or create one first.
+                  <p className="text-sm text-zinc-400 mb-2">
+                    No datasets available. Create one from a template above or create manually.
                   </p>
+                  <Link href="/datasets">
+                    <Button variant="outline" size="sm" className="w-full">
+                      <Plus className="mr-2 h-3 w-3" />
+                      Create Dataset
+                    </Button>
+                  </Link>
                 </div>
               )}
               <p className="mt-1 text-xs text-zinc-500">
@@ -283,7 +399,11 @@ function ImprovePageContent() {
             </Card>
 
             {/* Promotion Decision Banner */}
-            <PromotionDecisionBanner improvement={improvement} />
+            <PromotionDecisionBanner 
+              improvement={improvement} 
+              promptName={promptName}
+              diff={diff}
+            />
 
             {/* Diff Viewer */}
             {improvement.best_candidate_id && improvement.baseline_prompt_id && (

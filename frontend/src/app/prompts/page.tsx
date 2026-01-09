@@ -13,6 +13,7 @@ import Link from "next/link";
 
 export default function PromptsPage() {
   const [prompts, setPrompts] = useState<PromptResponse[]>([]);
+  const [versionCounts, setVersionCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const { toast } = useToast();
@@ -27,6 +28,20 @@ export default function PromptsPage() {
       setLoading(true);
       const promptsList = await apiClient.prompts.list();
       setPrompts(promptsList);
+      
+      // Load version counts for each prompt
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        promptsList.map(async (prompt) => {
+          try {
+            const versions = await apiClient.prompts.getVersions(prompt.name);
+            counts[prompt.name] = versions.length;
+          } catch {
+            counts[prompt.name] = 1;
+          }
+        })
+      );
+      setVersionCounts(counts);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Failed to load prompts";
       toast({
@@ -159,8 +174,8 @@ export default function PromptsPage() {
                 <PromptCard
                   key={prompt.id}
                   prompt={prompt}
+                  versionCount={versionCounts[prompt.name]}
                   onDelete={handleDeletePrompt}
-                  // TODO: Fetch and pass last evaluation score and promotion decision
                 />
               ))}
             </div>

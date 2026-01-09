@@ -22,6 +22,18 @@ class DatasetCreate(BaseModel):
     entries: Optional[List[DatasetEntryCreate]] = Field([], description="Initial dataset entries")
 
 
+class DatasetEntryResponse(BaseModel):
+    """Schema for dataset entry response"""
+    id: int
+    input_data: Dict[str, Any]
+    expected_output: Optional[Dict[str, Any]]
+    rubric: Optional[str]
+    metadata: Optional[Dict[str, Any]] = Field(None, alias="entry_metadata")
+    created_at: datetime
+    
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
 class DatasetResponse(BaseModel):
     """Schema for dataset response"""
     id: int
@@ -31,6 +43,7 @@ class DatasetResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     entry_count: int = 0
+    entries: Optional[List[DatasetEntryResponse]] = None
     
     model_config = {"from_attributes": True, "populate_by_name": True}
 

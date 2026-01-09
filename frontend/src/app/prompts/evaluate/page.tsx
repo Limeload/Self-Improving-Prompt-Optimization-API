@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/useToast";
-import { MetricBadge, EvaluationTable } from "@/components/prompts";
-import { Play, ArrowLeft, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { MetricBadge, EvaluationTable, EvaluationReport } from "@/components/prompts";
+import { Play, ArrowLeft, CheckCircle2, XCircle, Loader2, Sparkles, Plus } from "lucide-react";
 import Link from "next/link";
 
 function EvaluatePageContent() {
@@ -18,10 +18,19 @@ function EvaluatePageContent() {
   const [datasetId, setDatasetId] = useState("");
   const [prompts, setPrompts] = useState<PromptResponse[]>([]);
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
+  const [templates, setTemplates] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    metadata: Record<string, unknown>;
+    entry_count: number;
+  }>>([]);
   const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -32,6 +41,7 @@ function EvaluatePageContent() {
     }
     loadPrompts();
     loadDatasets();
+    loadTemplates();
   }, [searchParams]);
 
   const loadPrompts = async () => {
@@ -53,6 +63,41 @@ function EvaluatePageContent() {
       setDatasets(datasetsList);
     } catch {
       // Silently fail - datasets endpoint may not exist yet
+    } finally {
+      setLoadingDatasets(false);
+    }
+  };
+
+  const loadTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const templatesList = await apiClient.datasets.listTemplates().catch(() => []);
+      setTemplates(templatesList);
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleCreateFromTemplate = async (templateId: string, templateName: string) => {
+    try {
+      setLoadingDatasets(true);
+      const dataset = await apiClient.datasets.createFromTemplate(templateId);
+      toast({
+        title: "Success",
+        description: `Dataset "${dataset.name}" created from template`,
+      });
+      setShowTemplates(false);
+      await loadDatasets();
+      setDatasetId(dataset.id.toString());
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to create dataset from template";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setLoadingDatasets(false);
     }
@@ -151,9 +196,66 @@ function EvaluatePageContent() {
               </p>
             </div>
             <div>
-              <Label htmlFor="datasetId" className="text-white">
-                Dataset (optional)
-              </Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="datasetId" className="text-white">
+                  Dataset (optional)
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTemplates(!showTemplates)}
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  {showTemplates ? "Hide Templates" : "Use Template"}
+                </Button>
+              </div>
+              
+              {showTemplates && (
+                <Card className="mb-4 p-4 bg-purple-950/20 border-purple-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-white">Quick Create from Template</h4>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowTemplates(false)}
+                      className="text-zinc-400"
+                    >
+                      ×
+                    </Button>
+                  </div>
+                  {loadingTemplates ? (
+                    <p className="text-sm text-zinc-400">Loading templates...</p>
+                  ) : templates.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {templates.map((template) => (
+                        <Button
+                          key={template.id}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCreateFromTemplate(template.id, template.name)}
+                          disabled={loadingDatasets}
+                          className="justify-start text-left h-auto py-2 px-3 border-purple-500/30 hover:bg-purple-950/30"
+                        >
+                          <div className="flex-1">
+                            <div className="text-xs font-medium text-white">{template.name}</div>
+                            <div className="text-xs text-zinc-400 mt-0.5">
+                              {template.entry_count} entries
+                            </div>
+                          </div>
+                          <Plus className="h-3 w-3 ml-2 text-purple-400" />
+                        </Button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-400">No templates available</p>
+                  )}
+                </Card>
+              )}
+
               {loadingDatasets ? (
                 <div className="mt-1 p-2 bg-zinc-800 text-zinc-400 rounded-md">
                   Loading datasets...
@@ -175,9 +277,15 @@ function EvaluatePageContent() {
                 </select>
               ) : (
                 <div className="mt-1 p-3 bg-zinc-900/50 border border-zinc-800 rounded-md">
-                  <p className="text-sm text-zinc-400">
-                    No datasets available. You can evaluate without a dataset, or create one first.
+                  <p className="text-sm text-zinc-400 mb-2">
+                    No datasets available. Create one from a template above or create manually.
                   </p>
+                  <Link href="/datasets">
+                    <Button variant="outline" size="sm" className="w-full">
+                      <Plus className="mr-2 h-3 w-3" />
+                      Create Dataset
+                    </Button>
+                  </Link>
                 </div>
               )}
               <p className="mt-1 text-xs text-zinc-500">
@@ -197,74 +305,8 @@ function EvaluatePageContent() {
 
         {evaluation && (
           <div className="space-y-6">
-            {/* Summary Metrics */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-white">Evaluation Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                  <MetricBadge
-                    label="Overall Score"
-                    value={evaluation.overall_score || 0}
-                    variant={
-                      (evaluation.overall_score || 0) >= 0.8
-                        ? "success"
-                        : (evaluation.overall_score || 0) >= 0.6
-                        ? "warning"
-                        : "danger"
-                    }
-                  />
-                  <MetricBadge
-                    label="Correctness"
-                    value={evaluation.correctness_score || 0}
-                    variant="default"
-                  />
-                  <MetricBadge
-                    label="Format"
-                    value={evaluation.format_score || 0}
-                    variant="default"
-                  />
-                  <MetricBadge
-                    label="Verbosity"
-                    value={evaluation.verbosity_score || 0}
-                    variant="default"
-                  />
-                  <MetricBadge
-                    label="Safety"
-                    value={evaluation.safety_score || 0}
-                    variant="default"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-zinc-800">
-                  <div>
-                    <p className="text-xs text-zinc-400 mb-1">Total Examples</p>
-                    <p className="text-xl font-bold text-white">{evaluation.total_examples}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-400 mb-1">Passed</p>
-                    <p className="text-xl font-bold text-green-400 flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4" />
-                      {evaluation.passed_examples}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-400 mb-1">Failed</p>
-                    <p className="text-xl font-bold text-red-400 flex items-center gap-2">
-                      <XCircle className="h-4 w-4" />
-                      {evaluation.failed_examples}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-400 mb-1">Format Pass Rate</p>
-                    <p className="text-xl font-bold text-white">
-                      {((evaluation.format_pass_rate || 0) * 100).toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Evaluation Report */}
+            <EvaluationReport evaluation={evaluation} />
 
             {/* Detailed Results Table */}
             {evaluation.results && evaluation.results.length > 0 ? (

@@ -4,6 +4,7 @@ Handles prompt evaluation and self-improvement.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import List
 from app.core.database import get_db
 from app.schemas.evaluation import (
     EvaluationRequest,
@@ -103,6 +104,51 @@ def evaluate_prompt(
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+
+
+@router.get("/prompts/{name}", response_model=List[EvaluationResponse])
+def list_prompt_evaluations(
+    name: str,
+    db: Session = Depends(get_db),
+):
+    """
+    List all evaluations for a prompt.
+    
+    Returns all evaluations for the specified prompt, ordered by creation date (newest first).
+    """
+    from app.models.evaluation import Evaluation
+    from app.models.prompt import Prompt
+    from app.schemas.evaluation import EvaluationResultResponse
+    
+    # Get prompt to verify it exists
+    prompt = PromptService.get_prompt(db, name)
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt {name} not found")
+    
+    # Get all prompts with this name (all versions)
+    all_prompts = db.query(Prompt).filter(Prompt.name == name).all()
+    prompt_ids = [p.id for p in all_prompts]
+    
+    # Get all evaluations for these prompts
+    evaluations = (
+        db.query(Evaluation)
+        .filter(Evaluation.prompt_id.in_(prompt_ids))
+        .order_by(Evaluation.created_at.desc())
+        .all()
+    )
+    
+    # Build responses
+    responses = []
+    for evaluation in evaluations:
+        response = EvaluationResponse.model_validate(evaluation)
+        response.prompt_name = evaluation.prompt.name
+        response.prompt_version = evaluation.prompt.version
+        response.results = [
+            EvaluationResultResponse.model_validate(r) for r in evaluation.results
+        ]
+        responses.append(response)
+    
+    return responses
 
 
 @router.get("/{evaluation_id}", response_model=EvaluationResponse)

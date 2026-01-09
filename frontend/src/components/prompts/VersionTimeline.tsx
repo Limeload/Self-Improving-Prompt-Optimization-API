@@ -1,7 +1,11 @@
-import { PromptVersionResponse } from "@/lib/api-client";
+import { useState } from "react";
+import { PromptVersionResponse, PromptDiffResponse } from "@/lib/api-client";
+import { apiClient } from "@/lib/api-client";
 import { StatusPill } from "./StatusPill";
 import { Card } from "@/components/ui/card";
-import { GitBranch, CheckCircle2 } from "lucide-react";
+import { DiffViewer } from "./DiffViewer";
+import { GitBranch, CheckCircle2, Eye, X, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface VersionTimelineProps {
   versions: PromptVersionResponse[];
@@ -14,10 +18,44 @@ export function VersionTimeline({
   currentVersionId,
   onVersionSelect,
 }: VersionTimelineProps) {
+  const [selectedDiff, setSelectedDiff] = useState<{
+    versionA: PromptVersionResponse;
+    versionB: PromptVersionResponse;
+    diff: PromptDiffResponse | null;
+    loading: boolean;
+  } | null>(null);
+
   // Sort versions by creation date (newest first)
   const sortedVersions = [...versions].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+
+  const handleViewDiff = async (versionA: PromptVersionResponse, versionB: PromptVersionResponse) => {
+    setSelectedDiff({
+      versionA,
+      versionB,
+      diff: null,
+      loading: true,
+    });
+
+    try {
+      const diff = await apiClient.prompts.getDiff(versionA.id, versionB.id);
+      setSelectedDiff({
+        versionA,
+        versionB,
+        diff,
+        loading: false,
+      });
+    } catch (error) {
+      console.error("Failed to load diff:", error);
+      setSelectedDiff({
+        versionA,
+        versionB,
+        diff: null,
+        loading: false,
+      });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -52,15 +90,19 @@ export function VersionTimeline({
 
                 {/* Version card */}
                 <Card
-                  className={`flex-1 p-4 cursor-pointer transition-colors ${
+                  className={`flex-1 p-4 transition-colors ${
                     isCurrent ? "bg-blue-500/10 border-blue-500/50" : "hover:bg-white/[0.05]"
                   }`}
-                  onClick={() => onVersionSelect?.(version)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="font-semibold text-white">v{version.version}</span>
+                        <span 
+                          className="font-semibold text-white cursor-pointer hover:text-blue-400"
+                          onClick={() => onVersionSelect?.(version)}
+                        >
+                          v{version.version}
+                        </span>
                         <StatusPill status={version.status} />
                         {isCurrent && (
                           <span className="text-xs text-blue-400 font-medium">Current</span>
@@ -75,6 +117,22 @@ export function VersionTimeline({
                         )}
                       </div>
                     </div>
+                    <div className="flex gap-2 ml-4">
+                      {sortedVersions.findIndex(v => v.id === version.id) > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const prevVersion = sortedVersions[sortedVersions.findIndex(v => v.id === version.id) - 1];
+                            handleViewDiff(prevVersion, version);
+                          }}
+                          className="text-xs"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Diff
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </Card>
               </div>
@@ -82,6 +140,40 @@ export function VersionTimeline({
           })}
         </div>
       </div>
+
+      {/* Diff Viewer Modal */}
+      {selectedDiff && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <Card className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">
+                  Comparing v{selectedDiff.versionA.version} → v{selectedDiff.versionB.version}
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedDiff(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              {selectedDiff.loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+                  <span className="ml-2 text-zinc-400">Loading diff...</span>
+                </div>
+              ) : selectedDiff.diff ? (
+                <DiffViewer diff={selectedDiff.diff} />
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-zinc-400">Failed to load diff</p>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
