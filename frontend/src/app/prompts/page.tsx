@@ -15,7 +15,6 @@ export default function PromptsPage() {
   const [prompts, setPrompts] = useState<PromptResponse[]>([]);
   const [versionCounts, setVersionCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -54,24 +53,6 @@ export default function PromptsPage() {
     }
   };
 
-  const handleCreatePrompt = async (data: PromptCreate) => {
-    try {
-      const newPrompt = await apiClient.prompts.create(data);
-      toast({
-        title: "Success",
-        description: `Prompt ${newPrompt.name} v${newPrompt.version} created`,
-      });
-      setShowCreateForm(false);
-      loadPrompts();
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to create prompt";
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleDeletePrompt = async (prompt: PromptResponse) => {
     try {
@@ -102,22 +83,14 @@ export default function PromptsPage() {
               Manage, evaluate, and continuously improve your prompts
             </p>
           </div>
-          <Button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="bg-white text-black hover:bg-zinc-200"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Prompt
-          </Button>
+          <Link href="/prompts/create">
+            <Button className="bg-white text-black hover:bg-zinc-200">
+              <Plus className="mr-2 h-4 w-4" />
+              New Prompt
+            </Button>
+          </Link>
         </div>
 
-        {/* Create Form */}
-        {showCreateForm && (
-          <CreatePromptForm
-            onSubmit={handleCreatePrompt}
-            onCancel={() => setShowCreateForm(false)}
-          />
-        )}
 
         {/* Quick Actions */}
         <div className="mb-8 grid gap-4 sm:grid-cols-3">
@@ -198,100 +171,4 @@ export default function PromptsPage() {
   );
 }
 
-function CreatePromptForm({
-  onSubmit,
-  onCancel,
-}: {
-  onSubmit: (data: PromptCreate) => void;
-  onCancel: () => void;
-}) {
-  const [formData, setFormData] = useState<PromptCreate>({
-    name: "",
-    version: "1.0.0",
-    template_text: "",
-    status: "draft",
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(formData);
-  };
-
-  return (
-    <Card className="mb-8 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-white">Create New Prompt</h2>
-        <Link href="/prompts/create">
-          <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white">
-            Use Full Form →
-          </Button>
-        </Link>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="name" className="text-white">
-              Name *
-            </Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., sentiment_analyzer"
-              required
-              className="mt-1 bg-zinc-800 text-white"
-            />
-            <p className="mt-1 text-xs text-zinc-500">
-              Unique identifier for the prompt
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="version" className="text-white">
-              Version *
-            </Label>
-            <Input
-              id="version"
-              value={formData.version}
-              onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-              placeholder="e.g., 1.0.0"
-              required
-              className="mt-1 bg-zinc-800 text-white"
-            />
-            <p className="mt-1 text-xs text-zinc-500">
-              Version string (e.g., &quot;1.0.0&quot; or &quot;v2&quot;)
-            </p>
-          </div>
-        </div>
-        <div>
-          <Label htmlFor="template_text" className="text-white">
-            Template Text *
-          </Label>
-          <textarea
-            id="template_text"
-            value={formData.template_text}
-            onChange={(e) =>
-              setFormData({ ...formData, template_text: e.target.value })
-            }
-            required
-            rows={8}
-            placeholder="Enter your prompt template here. Use {{variable_name}} for inputs."
-            className="mt-1 w-full rounded-md bg-zinc-800 p-3 text-white placeholder:text-zinc-500 font-mono text-sm"
-          />
-          <p className="mt-1 text-xs text-zinc-500">
-            Use <code className="bg-zinc-900 px-1 rounded">{"{{variable_name}}"}</code> syntax for input variables
-          </p>
-        </div>
-        <div className="flex justify-end space-x-2 pt-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" className="bg-white text-black hover:bg-zinc-200">
-            <Plus className="mr-2 h-4 w-4" />
-            Create
-          </Button>
-        </div>
-      </form>
-    </Card>
-  );
-}
 
