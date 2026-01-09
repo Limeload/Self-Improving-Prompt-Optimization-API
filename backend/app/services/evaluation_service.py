@@ -98,8 +98,12 @@ class EvaluationService:
         executor = PromptExecutor(
             model_name=metadata.get("model"),
             temperature=metadata.get("temperature"),
+            provider=metadata.get("provider"),
         )
-        judge = LLMJudge()
+        judge = LLMJudge(
+            model_name=None,  # Use default judge model
+            provider=metadata.get("provider"),  # Use same provider as executor
+        )
         validator = FormatValidator()
         
         # Evaluate each entry
@@ -118,6 +122,8 @@ class EvaluationService:
                 validator,
                 evaluation_dimensions,
             )
+            # Add result to database session
+            db.add(result)
             results.append(result)
             
             if result.passed:
@@ -197,7 +203,8 @@ class EvaluationService:
             return result
         
         # Format validation
-        format_passed = False
+        # Default to True if no schema (nothing to validate against)
+        format_passed = True
         format_error = None
         
         if prompt.output_schema:
@@ -206,23 +213,75 @@ class EvaluationService:
                 prompt.output_schema,
             )
         
-        # LLM-based evaluation
+        # LLM-based evaluation (with caching)
         judge_result = None
         if "correctness" in dimensions or "verbosity" in dimensions or "safety" in dimensions or "consistency" in dimensions:
-            try:
-                judge_result = judge.evaluate(
+            # Check cache first
+            from app.utils.evaluation_cache import get_evaluation_cache
+            cache = get_evaluation_cache()
+            
+            if cache:
+                cached_result = cache.get(
                     input_data=entry.input_data,
                     actual_output=actual_output,
                     expected_output=entry.expected_output,
                     rubric=entry.rubric,
                     dimensions=dimensions,
                 )
-            except Exception as e:
-                # Judge failed, continue with format validation only
-                pass
+                if cached_result:
+                    judge_result = cached_result
+                    # Mark as cached in the result (for debugging/monitoring)
+                    judge_result["_cached"] = True
+            
+            # If not cached, run judge and cache result
+            if not judge_result:
+                try:
+                    judge_result = judge.evaluate(
+                        input_data=entry.input_data,
+                        actual_output=actual_output,
+                        expected_output=entry.expected_output,
+                        rubric=entry.rubric,
+                        dimensions=dimensions,
+                    )
+                    # Cache the result
+                    if cache:
+                        cache.set(
+                            input_data=entry.input_data,
+                            actual_output=actual_output,
+                            result=judge_result,
+                            expected_output=entry.expected_output,
+                            rubric=entry.rubric,
+                            dimensions=dimensions,
+                        )
+                except Exception as e:
+                    # Judge failed, continue with format validation only
+                    pass
         
         # Extract scores
         scores = judge_result.get("scores", {}) if judge_result else {}
+        
+        # Determine if test passed
+        # If no judge scores, pass if format validation passed
+        # If judge scores exist, require both format pass AND overall score >= 0.7
+        has_judge_scores = bool(scores and scores.get("overall") is not None)
+        overall_score = scores.get("overall") if has_judge_scores else None
+        
+        if has_judge_scores:
+            # Judge provided scores - require format pass AND score >= 0.7
+            passed = format_passed and (overall_score >= 0.7)
+        else:
+            # No judge scores - pass if format validation passed
+            passed = format_passed
+        
+        # Determine failure reason
+        failure_reason = None
+        if not passed:
+            if not format_passed:
+                failure_reason = format_error or "Format validation failed"
+            elif has_judge_scores and overall_score < 0.7:
+                failure_reason = f"Low overall score: {overall_score:.2%} (threshold: 70%)"
+            else:
+                failure_reason = "Evaluation failed"
         
         result = EvaluationResult(
             evaluation_id=evaluation.id,
@@ -235,15 +294,13 @@ class EvaluationService:
             verbosity_score=scores.get("verbosity"),
             safety_score=scores.get("safety"),
             consistency_score=scores.get("consistency"),
-            overall_score=scores.get("overall"),
+            overall_score=overall_score,
             passed_format_validation=format_passed,
             format_validation_error=format_error,
             judge_feedback=judge_result.get("feedback") if judge_result else None,
             judge_reasoning=scores.get("reasoning") if scores else None,
-            passed=format_passed and (scores.get("overall", 0.0) >= 0.7 if scores else True),
-            failure_reason=None if (format_passed and (scores.get("overall", 1.0) >= 0.7 if scores else True)) else (
-                format_error or "Low overall score"
-            ),
+            passed=passed,
+            failure_reason=failure_reason,
         )
         
         return result

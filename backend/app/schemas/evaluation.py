@@ -70,6 +70,10 @@ class EvaluationResponse(BaseModel):
 class ImprovementRequest(BaseModel):
     """Schema for triggering self-improvement"""
     dataset_id: Optional[int] = Field(None, description="Dataset ID for evaluation")
+    dataset_entries: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Inline dataset entries [{input_data, expected_output, rubric}]"
+    )
     baseline_version: Optional[str] = Field(None, description="Version to compare against (defaults to current active)")
     improvement_threshold: Optional[float] = Field(None, description="Minimum improvement required (overrides config)")
     max_candidates: int = Field(3, description="Maximum number of candidate prompts to generate")

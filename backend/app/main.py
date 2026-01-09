@@ -73,3 +73,34 @@ def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
 
+
+@app.get("/cache/stats")
+def get_cache_stats():
+    """Get evaluation cache statistics"""
+    from app.utils.evaluation_cache import get_evaluation_cache
+    cache = get_evaluation_cache()
+    
+    if cache:
+        return {
+            "enabled": True,
+            "stats": cache.stats()
+        }
+    else:
+        return {
+            "enabled": False,
+            "stats": None
+        }
+
+
+@app.post("/cache/clear")
+def clear_cache():
+    """Clear the evaluation cache"""
+    from app.utils.evaluation_cache import get_evaluation_cache
+    cache = get_evaluation_cache()
+    
+    if cache:
+        cache.clear()
+        return {"message": "Cache cleared successfully", "cache_size": 0}
+    else:
+        return {"message": "Cache is not enabled", "cache_size": 0}
+

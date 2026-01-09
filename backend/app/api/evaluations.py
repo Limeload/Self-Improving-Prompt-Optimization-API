@@ -270,6 +270,7 @@ def improve_prompt(
             db,
             name,
             dataset=dataset,
+            dataset_entries=request.dataset_entries,
             baseline_version=request.baseline_version,
             improvement_threshold=request.improvement_threshold,
             max_candidates=request.max_candidates,

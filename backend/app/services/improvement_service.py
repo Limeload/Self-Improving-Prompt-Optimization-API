@@ -22,6 +22,7 @@ class ImprovementService:
         db: Session,
         prompt_name: str,
         dataset: Optional[Dataset] = None,
+        dataset_entries: Optional[List[Dict[str, Any]]] = None,
         baseline_version: Optional[str] = None,
         improvement_threshold: Optional[float] = None,
         max_candidates: int = 3,
@@ -55,7 +56,7 @@ class ImprovementService:
             raise ValueError(f"Prompt {prompt_name} not found")
         
         # Evaluate baseline
-        baseline_eval = EvaluationService.evaluate_prompt(db, baseline, dataset)
+        baseline_eval = EvaluationService.evaluate_prompt(db, baseline, dataset=dataset, dataset_entries=dataset_entries)
         baseline_score = baseline_eval.overall_score or 0.0
         
         # Analyze failures and generate candidates
@@ -72,7 +73,7 @@ class ImprovementService:
         best_eval = None
         
         for candidate in candidates:
-            candidate_eval = EvaluationService.evaluate_prompt(db, candidate, dataset)
+            candidate_eval = EvaluationService.evaluate_prompt(db, candidate, dataset=dataset, dataset_entries=dataset_entries)
             candidate_score = candidate_eval.overall_score or 0.0
             
             if candidate_score > best_score:
@@ -147,11 +148,13 @@ class ImprovementService:
         # Analyze failures
         failure_analysis = ImprovementService._analyze_failures(baseline, baseline_eval)
         
-        # Generate candidate prompts
-        llm = ChatOpenAI(
-            model=settings.GENERATION_MODEL,
+        # Generate candidate prompts using the configured provider
+        from app.utils.langchain_utils import get_llm_instance
+        llm = get_llm_instance(
+            provider=settings.LLM_PROVIDER,
+            model_name=None,  # Use default generation model
             temperature=0.7,
-            api_key=settings.OPENAI_API_KEY,
+            is_judge=False,
         )
         
         improvement_prompt = f"""You are an expert prompt engineer. Analyze the following prompt and its failures, then propose improved versions.
