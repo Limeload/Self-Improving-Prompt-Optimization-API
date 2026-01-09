@@ -82,8 +82,22 @@ def run_prompt(
         logger.info(f"Successfully ran prompt: name={name}")
         return result
     except ValueError as e:
-        logger.warning(f"Prompt not found or invalid: name={name}, error={str(e)}")
-        raise HTTPException(status_code=404, detail=str(e))
+        # Try to find similar prompts for better error message
+        all_prompts = db.query(Prompt).filter(Prompt.name.like(f"%{name[:20]}%")).limit(5).all()
+        similar_names = [p.name for p in all_prompts]
+        
+        error_detail = str(e)
+        if similar_names:
+            error_detail += f". Similar prompt names found: {', '.join(similar_names)}"
+        elif "not found" in error_detail.lower():
+            # List all available prompts if no similar ones found
+            all_prompt_names = db.query(Prompt.name).distinct().limit(10).all()
+            if all_prompt_names:
+                available_names = [p[0] for p in all_prompt_names]
+                error_detail += f". Available prompts: {', '.join(available_names)}"
+        
+        logger.warning(f"Prompt not found or invalid: name={name}, error={error_detail}")
+        raise HTTPException(status_code=404, detail=error_detail)
     except Exception as e:
         logger.error(f"Error running prompt: name={name}, error={str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}")

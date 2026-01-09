@@ -7,6 +7,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from typing import Dict, Any, Optional
 import json
+import re
 from app.core.config import settings
 
 # Optional imports for other LLM providers - using direct SDKs
@@ -275,6 +276,17 @@ class PromptExecutor:
             # Create prompt template
             prompt = ChatPromptTemplate.from_template(template_text)
             
+            # Extract required variables from template
+            template_vars = set(re.findall(r'\{(\w+)\}', template_text))
+            provided_vars = set(input_data.keys())
+            missing_vars = template_vars - provided_vars
+            
+            if missing_vars:
+                raise ValueError(
+                    f"Missing required input variables: {', '.join(sorted(missing_vars))}. "
+                    f"Provided variables: {', '.join(sorted(provided_vars)) if provided_vars else 'none'}"
+                )
+            
             # Format prompt with input data
             formatted_prompt = prompt.format(**input_data)
             
@@ -307,6 +319,16 @@ class PromptExecutor:
             else:
                 return {"output": content}
         
+        except ValueError as e:
+            # Re-raise ValueError as-is (already has helpful message)
+            raise
+        except KeyError as e:
+            # Handle KeyError from template formatting
+            missing_key = str(e).strip("'\"")
+            raise ValueError(
+                f"Missing required input variable: '{missing_key}'. "
+                f"Provided variables: {', '.join(sorted(input_data.keys())) if input_data else 'none'}"
+            )
         except Exception as e:
             raise ValueError(f"Prompt execution failed: {str(e)}")
 
